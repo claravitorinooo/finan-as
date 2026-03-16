@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor Financeiro All-in-One</title>
+    <style>
+        /* CSS INTEGRADO */
+        :root {
+            --bg-color: #f0f2f5;
+            --primary: #4e73df;
+            --success: #1cc88a;
+            --danger: #e74a3b;
+            --text-main: #333;
+            --white: #ffffff;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px 20px;
+        }
+
+        .container { width: 100%; max-width: 450px; }
+
+        h1 { margin-bottom: 25px; text-align: center; color: var(--primary); }
+
+        /* Cards de Resumo */
+        .balance-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: var(--white);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+
+        .card.total { grid-column: span 2; border-top: 4px solid var(--primary); }
+        .card h3 { font-size: 0.9rem; text-transform: uppercase; color: #777; margin-bottom: 5px; }
+        .card p { font-size: 1.4rem; font-weight: bold; }
+
+        .plus { color: var(--success); }
+        .minus { color: var(--danger); }
+
+        /* Formulário */
+        .form-container {
+            background: var(--white);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            outline: none;
+        }
+
+        input:focus { border-color: var(--primary); }
+
+        .btn {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover { opacity: 0.9; }
+
+        /* Lista de Transações */
+        .history-title { margin-bottom: 15px; font-size: 1.1rem; }
+        
+        .transactions { list-style: none; }
+        
+        .transactions li {
+            background: var(--white);
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.03);
+        }
+
+        .transactions li.plus { border-left: 5px solid var(--success); }
+        .transactions li.minus { border-left: 5px solid var(--danger); }
+
+        .delete-btn {
+            cursor: pointer;
+            background-color: #ff4d4d;
+            border: none;
+            color: white;
+            font-size: 12px;
+            line-height: 20px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-left: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .transactions li:hover .delete-btn { opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>💰 Meu Financeiro</h1>
+
+        <section class="balance-container">
+            <div class="card total">
+                <h3>Saldo Atual</h3>
+                <p id="balance">R$ 0.00</p>
+            </div>
+            <div class="card">
+                <h3>Receitas</h3>
+                <p id="money-plus" class="plus">+ R$ 0.00</p>
+            </div>
+            <div class="card">
+                <h3>Despesas</h3>
+                <p id="money-minus" class="minus">- R$ 0.00</p>
+            </div>
+        </section>
+
+        <div class="form-container">
+            <h3>Nova Transação</h3>
+            <form id="form">
+                <input type="text" id="text" placeholder="Nome da transação (ex: Almoço)" autocomplete="off" />
+                <input type="number" step="0.01" id="amount" placeholder="Valor (Ex: 50 ou -50)" />
+                <button class="btn">Adicionar Registro</button>
+            </form>
+        </div>
+
+        <h3 class="history-title">Histórico de Movimentações</h3>
+        <ul id="transactions" class="transactions"></ul>
+    </div>
+
+    <script>
+        /* JAVASCRIPT INTEGRADO */
+        const transactionsUl = document.querySelector('#transactions');
+        const incomeDisplay = document.querySelector('#money-plus');
+        const expenseDisplay = document.querySelector('#money-minus');
+        const balanceDisplay = document.querySelector('#balance');
+        const form = document.querySelector('#form');
+        const inputTransactionName = document.querySelector('#text');
+        const inputTransactionAmount = document.querySelector('#amount');
+
+        // Busca dados salvos ou inicia vazio
+        let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+
+        const updateLocalStorage = () => {
+            localStorage.setItem('transactions', JSON.stringify(transactions));
+        }
+
+        const removeTransaction = ID => {
+            transactions = transactions.filter(transaction => transaction.id !== ID);
+            updateLocalStorage();
+            init();
+        }
+
+        const addTransactionIntoDOM = ({ amount, name, id }) => {
+            const operator = amount < 0 ? '-' : '+';
+            const CSSClass = amount < 0 ? 'minus' : 'plus';
+            const amountWithoutOperator = Math.abs(amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+            
+            const li = document.createElement('li');
+            li.classList.add(CSSClass);
+            li.innerHTML = `
+                ${name} 
+                <span>
+                    ${operator} R$ ${amountWithoutOperator}
+                    <button class="delete-btn" onClick="removeTransaction(${id})">Excluir</button>
+                </span>
+            `;
+            transactionsUl.prepend(li); // Adiciona no topo da lista
+        }
+
+        const updateBalanceValues = () => {
+            const transactionAmounts = transactions.map(t => t.amount);
+            
+            const total = transactionAmounts
+                .reduce((acc, val) => acc + val, 0)
+                .toFixed(2);
+
+            const income = transactionAmounts
+                .filter(val => val > 0)
+                .reduce((acc, val) => acc + val, 0)
+                .toFixed(2);
+
+            const expense = Math.abs(transactionAmounts
+                .filter(val => val < 0)
+                .reduce((acc, val) => acc + val, 0))
+                .toFixed(2);
+
+            balanceDisplay.textContent = `R$ ${parseFloat(total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            incomeDisplay.textContent = `+ R$ ${parseFloat(income).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            expenseDisplay.textContent = `- R$ ${parseFloat(expense).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            
+            // Cor do saldo principal
+            balanceDisplay.className = total < 0 ? 'minus' : (total > 0 ? 'plus' : '');
+        }
+
+        const init = () => {
+            transactionsUl.innerHTML = '';
+            transactions.forEach(addTransactionIntoDOM);
+            updateBalanceValues();
+        }
+
+        form.addEventListener('submit', event => {
+            event.preventDefault();
+
+            const name = inputTransactionName.value.trim();
+            const amount = inputTransactionAmount.value.trim();
+
+            if (name === '' || amount === '') {
+                alert('Preencha o nome e o valor!');
+                return;
+            }
+
+            const transaction = { 
+                id: Math.floor(Math.random() * 100000), 
+                name, 
+                amount: Number(amount) 
+            };
+
+            transactions.push(transaction);
+            init();
+            updateLocalStorage();
+
+            inputTransactionName.value = '';
+            inputTransactionAmount.value = '';
+            inputTransactionName.focus();
+        });
+
+        init();
+    </script>
+</body>
+</html>
